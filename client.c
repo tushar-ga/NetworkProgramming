@@ -11,7 +11,7 @@ int connfd;
 
 
 #define SERV_PORT 9879
-#define IP_ADDR "172.17.43.69"
+#define IP_ADDR "192.168.1.7"
 
 
 
@@ -31,7 +31,7 @@ int main(int argc, char *argv[]){
         char src[128];
         char dest[128];
         int size;
-    enum command_no num = take_command(cmd,src,dest,&size);
+    enum command_no num = take_command(cmd,src,dest,&size, connfd);
         if(num==LS||num == MV){
             send_cmd(connfd,num,src,dest,size);
         }

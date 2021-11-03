@@ -66,7 +66,7 @@ enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest){
                 strcpy(dest,tokens[2]);
             }
             break;
-        case 5: exit(0); break;
+        case 5: break;
         default:
             printf("Not a valid command.\n");
             break;
@@ -75,7 +75,7 @@ enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest){
         return cmd_no;
 }
 
-enum command_no take_command(char *cmd, char*src, char*dest, int *size){
+enum command_no take_command(char *cmd, char*src, char*dest, int *size, int connfd){
     char *user_in;
     *size = 0;
     char orig[256]; //for maintaining original command
@@ -84,6 +84,10 @@ enum command_no take_command(char *cmd, char*src, char*dest, int *size){
     user_in = gets();
     strcpy(orig,user_in);
     enum command_no cmd_no = parse_command(user_in,cmd,src,dest);
+    if(cmd_no == 5){
+        close(connfd);
+        exit(0);
+    }
     int src_bfs = prefix("./bfs",src);
     int des_bfs = prefix("./bfs",dest);
     if(src_bfs&&!des_bfs || !src_bfs&&des_bfs){

@@ -14,7 +14,7 @@
 #define SERV_PORT 9879
 #define LISTENQ 10
 #define BUFSIZE 1024
-#define IP "172.17.43.169"
+#define IP "172.17.43.69"
 
 int connfd;
 int test;
@@ -256,10 +256,10 @@ int main(int argc, char **argv)
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons (SERV_PORT);
-    char server_addr[20];
-    inet_ntop(AF_INET,&servaddr,server_addr,sizeof(servaddr));
-    printf("Server running on %s\n", server_addr);
-    fflush(stdout);
+    // char server_addr[20];
+    // inet_ntop(AF_INET,&servaddr,server_addr,sizeof(servaddr));
+    // printf("Server running on %s\n", server_addr);
+    // fflush(stdout);
     if(bind(listenfd, (struct sockaddr*) &servaddr, sizeof(servaddr))==-1){
         perror("Bind Error");
         exit(0);
@@ -269,6 +269,12 @@ int main(int argc, char **argv)
         perror("Error listening\n");
         exit(0);
     };
+    char server_addr[20];
+    servaddr.sin_addr.s_addr = ntohl(servaddr.sin_addr.s_addr);
+    servaddr.sin_port = ntohs (servaddr.sin_port);
+    inet_ntop(AF_INET,&servaddr,server_addr,sizeof(servaddr));
+    printf("Server running on %s\n", server_addr);
+    fflush(stdout);
     for ( ; ; ) {
         clilen = sizeof(cliaddr);
         connfd = accept(listenfd, (struct sockaddr *) &cliaddr, &clilen);
@@ -279,7 +285,10 @@ int main(int argc, char **argv)
                 // int stdout_fd = dup(1);
                 // FILE * out = fdopen(stdout_fd,"a");
                 while(1){
-                read(connfd,&request,sizeof(request));
+                if(read(connfd,&request,sizeof(request))==0){
+                    close(connfd);
+                    exit(0);
+                };
                 char addr[20];
                 inet_ntop(AF_INET,&cliaddr.sin_addr,&addr,20);
                 printf("Request received from %s: Command no: %d Src: %s Dest: %s Size:%d,\n",addr,request.command_no,request.src,request.dest,request.size);

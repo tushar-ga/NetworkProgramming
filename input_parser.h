@@ -9,5 +9,5 @@
 
 enum command_no {LS,CAT,RM,MV,CP,QUIT,INVALID};
 enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest);
-enum command_no take_command(char *cmd, char*src, char*dest, int *size);
+enum command_no take_command(char *cmd, char*src, char*dest, int *size, int connfd);
 char *gets();

@@ -3,7 +3,7 @@
 #include<arpa/inet.h>
 #include<stdio.h>
 #include<stdlib.h>
-#define SERV_PORT 9877
+#define SERV_PORT 9875
 int main(int argc, char **argv){
 int sockfd;
 struct sockaddr_in servaddr;

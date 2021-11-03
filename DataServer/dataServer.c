@@ -5,8 +5,9 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include<stdlib.h>
 #define SERV_PORT 9877
-#define IP "127.0.0.1"
+#define IP "192.168.1.7"
 #define QUEUE 10
 
 void writeHandler(int connfd, struct dataServer_client_req_packet req){
@@ -21,7 +22,8 @@ int main(int argc, char * argv[]){
     socklen_t clilen;
     bzero(&servaddr,sizeof(servaddr));
     servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(SERV_PORT);
+    int port = atoi(argv[1]);
+    servaddr.sin_port = htons(port);
     inet_pton(AF_INET,IP,&servaddr.sin_addr);
     char server_addr[20];
     inet_ntop(AF_INET,&servaddr,server_addr,sizeof(servaddr));
@@ -29,9 +31,11 @@ int main(int argc, char * argv[]){
     fflush(stdout);
     if(bind(listenfd,(struct sockaddr *)&servaddr,sizeof(servaddr))==-1){
         perror("Bind Error");
+        exit(0);
     }
     if(listen(listenfd,QUEUE)==-1){
         perror("Listen Error");
+        exit(0);
     }
     for( ; ; ){
         clilen = sizeof(cliaddr);
@@ -40,10 +44,11 @@ int main(int argc, char * argv[]){
             close(listenfd);
             struct dataServer_client_req_packet req;
             while(1){
-                read(connfd,&req,sizeof(req));
+                if(read(connfd,&req,sizeof(req))==0) {close(connfd); exit(0);};
                 char addr[20];
                 inet_ntop(AF_INET,&cliaddr.sin_addr,&addr,20);
                 printf("Request received from %s, Command No: %d",addr,req.command_no);
+                fflush(stdout);
                 switch(req.command_no){
                     case 0:
                     case 1: writeHandler(connfd,req); break;

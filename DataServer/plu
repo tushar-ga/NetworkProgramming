@@ -1,0 +1,39 @@
+obj
+481 0 obj
+<</A 495 0 R/Count 4/Next 482 0 R/Parent 16 0 R/Title(13.1 Geometric Techniques)/First 483 0 R/Last 486 0 R>>
+endobj
+499 0 obj
+<</S/GoTo/D[500 0 R/XYZ -3 256 0.0]>>
+endobj
+496 0 obj
+<</A 499 0 R/Next 497 0 R/Parent 482 0 R/Title(13.2.1 Intersection Points)>>
+endobj
+501 0 obj
+<</S/GoTo/D[502 0 R/XYZ -3 240 0.0]>>
+endobj
+497 0 obj
+<</A 501 0 R/Next 498 0 R/Parent 482 0 R/Title(13.2.2 Closest Pair Problem)/Prev 496 0 R>>
+endobj
+503 0 obj
+<</S/GoTo/D[504 0 R/XYZ -3 546 0.0]>>
+endobj
+498 0 obj
+<</A 503 0 R/Parent 482 0 R/Title(13.2.3 Convex Hull Problem)/Prev 497 0 R>>
+endobj
+505 0 obj
+<</S/GoTo/D[500 0 R/XYZ -3 371 0.0]>>
+endobj
+482 0 obj
+<</A 505 0 R/Count 3/Parent 16 0 R/Title(13.2 Sweep Line Algorithms)/First 496 0 R/Prev 481 0 R/Last 498 0 R>>
+endobj
+506 0 obj
+<</S/GoTo/D[488 0 R/XYZ -3 630 0.0]>>
+endobj
+16 0 obj
+<</A 506 0 R/Count -9/Next 17 0 R/Parent 1 0 R/Title(13 Geometry)/First 481 0 R/Prev 15 0 R/Last 482 0 R>>
+endobj
+513 0 obj
+<</S/GoTo/D[514 0 R/XYZ -3 409 0.0]>>
+endobj
+511 0 obj
+<</A 5
