@@ -7,12 +7,42 @@
 #include <arpa/inet.h>
 #include<stdlib.h>
 #define SERV_PORT 9877
-#define IP "192.168.1.7"
+// #define IP "192.168.1.7"
 #define QUEUE 10
 
 void writeHandler(int connfd, struct dataServer_client_req_packet req){
     int fd = open(req.token,O_CREAT|O_WRONLY);
     write(fd,req.payload,sizeof(req.payload));
+    for(int i=0;i<1023;i++){
+        read(connfd,&req,sizeof(req));
+        if(req.command_no!=-1)
+        write(fd,req.payload,sizeof(req.payload));
+        else break;
+    }
+    close(fd);
+}
+
+void readHandler(int connfd, struct dataServer_client_req_packet req){
+    int fd = open(req.token,O_RDONLY);
+    struct server_resp_packet res;
+    res.response_no = 1;
+    for(int i=0;i<1024;i++){
+        if(read(fd,res.payload,sizeof(res.payload))!=0)  write(connfd,&res,sizeof(res));
+        else {
+            res.response_no = -1;
+            write(connfd,&res,sizeof(res));
+            break;
+        }  
+    }
+    close(fd);
+}
+void removeHandler(int connfd, struct dataServer_client_req_packet req){
+    char finalcmd[256] = "rm ";
+    strcat(finalcmd,req.token);
+    if(system(finalcmd)==-1){
+        printf("Error");
+        return;
+    };
 }
 int main(int argc, char * argv[]){
     int childpid;
@@ -22,9 +52,10 @@ int main(int argc, char * argv[]){
     socklen_t clilen;
     bzero(&servaddr,sizeof(servaddr));
     servaddr.sin_family = AF_INET;
-    int port = atoi(argv[1]);
+    int port = 9877;
     servaddr.sin_port = htons(port);
-    inet_pton(AF_INET,IP,&servaddr.sin_addr);
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    // inet_pton(AF_INET,IP,&servaddr.sin_addr);
     char server_addr[20];
     inet_ntop(AF_INET,&servaddr,server_addr,sizeof(servaddr));
     printf("Server running on %s\n", server_addr);
@@ -47,13 +78,13 @@ int main(int argc, char * argv[]){
                 if(read(connfd,&req,sizeof(req))==0) {close(connfd); exit(0);};
                 char addr[20];
                 inet_ntop(AF_INET,&cliaddr.sin_addr,&addr,20);
-                printf("Request received from %s, Command No: %d",addr,req.command_no);
+                printf("Request received from %s, Command No: %d\n",addr,req.command_no);
                 fflush(stdout);
                 switch(req.command_no){
-                    case 0:
+                    case 0: readHandler(connfd,req); break;
                     case 1: writeHandler(connfd,req); break;
-                    case 2:
-                    default : printf("Invalid command number received\n");
+                    case 2: removeHandler(connfd,req); break;
+                    default : {printf("Invalid command number received\n"); close(connfd); exit(0);};
                 }
             }
             

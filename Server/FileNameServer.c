@@ -14,7 +14,6 @@
 #define SERV_PORT 9879
 #define LISTENQ 10
 #define BUFSIZE 1024
-#define IP "172.17.43.69"
 
 int connfd;
 int test;
@@ -67,6 +66,27 @@ char * nextToken(){
     write(fd,token,n);
     return token;
 }
+
+void fileToClientHandler(int connfd, char*src, char*dest, int size){
+    int fd;
+    if((fd = open(src,O_RDONLY))==-1){
+        perror("Opening file");
+    }
+    else{
+        char buf[20];
+        FILE * f = fdopen(fd,"r");
+        while(fscanf(f,"%s\n",&buf)!=EOF){
+             printf("%s",buf);
+            fflush(stdout);
+            sendToClient(connfd,0,buf);
+            fscanf(f,"%s\n",&buf);
+            printf("%s",buf);
+            fflush(stdout);
+            sendToClient(connfd,0,buf);
+        }
+        sendToClient(connfd,-1," ");   
+    }
+}
 void fileFromClientHandler(int connfd, char *src, char*dest, int size)
 {       
         int fd;
@@ -76,12 +96,14 @@ void fileFromClientHandler(int connfd, char *src, char*dest, int size)
         else{
             srand(time(0));
             int dataServerNo = (rand()%serverN);
-            int blocksNo = size/1024;
-            if(size%1024 != 0) {blocksNo++;}
+            int blocksNo = size/1048576;
+            if(size%1048576 != 0) {blocksNo++;}
             for(int i=0;i<blocksNo;i++){
                 char * token = nextToken();
                 sendToClient(connfd,0,token);
                 sendToClient(connfd,0,ServerIP[dataServerNo]);
+                printf("Sending Token: %s, IP:%s",token,ServerIP[dataServerNo]); fflush(stdout);
+
                 char newline[2] = "\n";
                 strcat(token, newline);
                 write(fd,token,strlen(token));
@@ -123,12 +145,8 @@ void fileFromClientHandler(int connfd, char *src, char*dest, int size)
     //     exit(0);
     // }
 
-void cpHandler(int connfd, char* src, char*dest, int size){
+void mvHandler(int connfd, char* src, char*dest, int size){
     if(vfork()==0){
-         if(prefix("./bfs",dest)!=0){
-                fileFromClientHandler(connfd,src,dest,size);
-            }
-        else{
             char response[BUFSIZ];
             int pipe_desc[2];
             pipe(pipe_desc);
@@ -136,7 +154,7 @@ void cpHandler(int connfd, char* src, char*dest, int size){
             close(2);
             dup(pipe_desc[1]);
             dup(pipe_desc[1]);
-            char final_cmd[256] = "cp ";
+            char final_cmd[256] = "mv ";
             strcat(final_cmd,src);
             char space[] =" ";
             strcat(final_cmd,space);
@@ -156,15 +174,16 @@ void cpHandler(int connfd, char* src, char*dest, int size){
             strcpy(resp_packet.payload,response);
             write(connfd,&resp_packet,sizeof(resp_packet));
             exit(0);
-        }
-        
     }
 }
 
-void mvHandler(int connfd, char* src, char*dest, int size){
+void cpHandler(int connfd, char* src, char*dest, int size){
     if(vfork()==0){
-            if(prefix("./bfs",dest)!=0){
+            if(prefix("./bfs",dest)==1){
                 fileFromClientHandler(connfd,src,dest,size);
+            }
+            else if (prefix("./bfs",src)==1){
+                fileToClientHandler(connfd,src,dest,size);
             }
             else
             {    
@@ -175,7 +194,7 @@ void mvHandler(int connfd, char* src, char*dest, int size){
                 close(2);
                 dup(pipe_desc[1]);
                 dup(pipe_desc[1]);
-                char final_cmd[256] = "mv ";
+                char final_cmd[256] = "cp ";
                 strcat(final_cmd,src);
                 char space[] =" ";
                 strcat(final_cmd,space);
@@ -241,10 +260,19 @@ void readEnv(){
     }
     fclose(fp);
 }
+void rmHandler(int connfd, char *src){
+    fileToClientHandler(connfd,src,NULL,0);
+    char final_cmd[256] = "rm ";
+    strcat(final_cmd,src);
+    if(system(final_cmd)==-1){
+        printf("Error");
+        return;
+    };
+}
 int main(int argc, char **argv)
 {
     readEnv();
-    // fileFromClientHandler(0, " ", "./bfs/f1/test2", 4000);
+    // fileToClientHandler(0, "./bfs/f2/check.pdf", " ", 4000);
     int listenfd;
     pid_t childpid;
     socklen_t clilen;
@@ -294,8 +322,10 @@ int main(int argc, char **argv)
                 printf("Request received from %s: Command no: %d Src: %s Dest: %s Size:%d,\n",addr,request.command_no,request.src,request.dest,request.size);
                 switch(request.command_no){
                     case 0 : lsHandler(connfd, request.src); break;
+                    case 1 : cpHandler(connfd,request.src,request.dest,request.size); break; //cat similar to cp 
+                    case 2:  rmHandler(connfd,request.src); break;
                     case 3 : mvHandler(connfd,request.src,request.dest,request.size); break;
-                    case 4 : cpHandler(connfd,request.src,request.dest,request.size); break;
+                    case 4 : cpHandler(connfd,request.src,request.dest,request.size); break; 
                     default : printf("This command is still not functional\n");
                 } /* process the request */
                 //  fprintf(out,"Request received from %s: Command no: %d \n",addr,request.command_no); /* process the request */

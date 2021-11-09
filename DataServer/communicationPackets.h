@@ -1,7 +1,7 @@
 struct dataServer_client_req_packet{
     int command_no;
     char token[256];
-    char payload[1025];
+    char payload[1024];
 };
 struct server_resp_packet{
     int response_no;

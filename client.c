@@ -16,6 +16,8 @@ int connfd;
 
 
 int main(int argc, char *argv[]){
+    printf("*********************WELCOME TO BIG FILE SYSTEM!***********************\n");
+    printf("You can use the commands (ls,mv,cp,rm,cat and quit) here.\nFor referring to the paths on the server please attach \"./bfs\" in your path for correct results.\n");
     struct sockaddr_in server_addr;
     connfd = socket(AF_INET,SOCK_STREAM,0);
     bzero(&server_addr,sizeof(server_addr));
@@ -32,8 +34,6 @@ int main(int argc, char *argv[]){
         char dest[128];
         int size;
     enum command_no num = take_command(cmd,src,dest,&size, connfd);
-        if(num==LS||num == MV){
-            send_cmd(connfd,num,src,dest,size);
-        }
+    if(num!=INVALID) send_cmd(connfd,num,src,dest,size);
     }
 }

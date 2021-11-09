@@ -8,11 +8,13 @@
 #include<arpa/inet.h>
 #include <netdb.h>
 #include <sys/wait.h>
+#include<errno.h>
 #define MAXSERVERS 3
-// #define DATA_PORT 9877
-int DATA_PORT[] = {9875,9876,9877};
+#define DATA_PORT 9877
+// int DATA_PORT = {9875,9876,9877};
 enum fileBlockCmd{READ, WRITE, DEL};
 int dataServerConn[MAXSERVERS];
+extern int errno;
 
 
 
@@ -40,52 +42,171 @@ int connectClient(char *IP, int port){
     return socketfd;
 }
 
-//Writing a File Block of 1 MB
-void writeBlock(int fd, int blockNo, char *token, int dataServerConnectionFd){
-    int childpid;
-    // printf("Coming here\n");
+//Writing a File Block of 1 MB to server and Reading from Client
+void writeBlock(char *src, int blockNo, char *token, int dataServerConnectionFd){
     struct dataServer_client_req_packet req;
     req.command_no = WRITE;
     strcpy(req.token,token);
-    lseek(fd,blockNo*1024,SEEK_SET);
+    int fd = open(src,O_RDONLY);
+    lseek(fd,blockNo*1048576,SEEK_SET);
     char block[1024];
-    read(fd,block,sizeof(block));
-    strcpy(req.payload,block);
-    write(dataServerConnectionFd,&req,sizeof(req));
+    for (int i=0;i<1024;i++){
+    if(read(fd,block,sizeof(block))!=0){
+        strcpy(req.payload,block);
+        write(dataServerConnectionFd,&req,sizeof(req));
+        } 
+    else {
+        req.command_no = -1;
+        write(dataServerConnectionFd,&req,sizeof(req));
+        break;};
+    }
+    close(fd);
 }
 
-//Reading the Write Block of File from FileNameServer
-void readWriteFileBlock(int connfd, int size, char *src, char *dest){
-    int readWriteFlag = 0;
-    int fd;
-    if(preCheck("./bfs",dest)){
-        readWriteFlag = 1;
-        fd = open(src,O_RDONLY);
-    }
+//Reading a File Block from server and writing at Client
+void readBlock(char *dest, int blockNo, char *token, int dataServerConnectionFd){
+    struct dataServer_client_req_packet req;
+    req.command_no = READ;
+    strcpy(req.token,token);
+    write(dataServerConnectionFd,&req,sizeof(req));
     struct server_resp_packet res;
-    int block = size/1024;
-    if(size%1024!=0) block++;
-    char token[block][20];
-    char IP[block][20];
-    for(int i=0;i<block;i++){
-        read(connfd,&res,sizeof(res));
-        strcpy(token[i],res.payload);
-        read(connfd,&res,sizeof(res));
-        strcpy(IP[i],res.payload);
-        printf("Token: %s\t IP:%s\n",token[i],IP[i]);
+    int fd = 1;
+    if(dest!=NULL)fd = open(dest,O_WRONLY);
+    lseek(fd,blockNo*1048576,SEEK_SET);
+    for(int i=0;i<1024;i++){
+    read(dataServerConnectionFd,&res,sizeof(res));
+    if(res.response_no!=-1)
+    write(fd,res.payload,sizeof(res.payload));
+    else break;
     }
+    close(fd);
+}
+void sigalarm(int sig){
+    printf("Server took too long to respond. You either referred to a non-existing file or there might be problem in your connection\n");
+    exit(0);
+}
+void deleteBlock(int dataServerConnectionFd, char *token){
+    struct dataServer_client_req_packet req;
+    req.command_no = 2;
+    strcpy(req.token, token);
+    write(dataServerConnectionFd,&req,sizeof(req));
+}
+void removeFile(int connfd, char *src){
+    int block;
+    char **token;
+    char **IP;
+    block = 0;
+    struct server_resp_packet res;
+        int maxsize = 1;
+        token = (char **)malloc(maxsize* sizeof(char*));
+        IP = (char **)malloc(maxsize* sizeof(char*));
+        signal(SIGALRM,sigalarm);
+        alarm(2);
+        int a;
+        while((a=read(connfd,&res,sizeof(res)))>0){
+            if (errno == EINTR){
+                return;
+            }
+            alarm(0);
+            if(res.response_no==-1) break;
+            block++;
+            if(block>maxsize){
+                maxsize = maxsize*2;
+                token = (char **)realloc(token,maxsize* sizeof(char*));
+                IP = (char **)realloc(IP,maxsize* sizeof(char*));
+            }
+            token[block-1] = (char *)malloc(20 * sizeof(char));
+            IP[block-1] = (char *)malloc(20 * sizeof(char));
+            strcpy(token[block-1],res.payload);
+            read(connfd,&res,sizeof(res));
+            strcpy(IP[block-1],res.payload);
+            printf("Token: %s\t IP:%s\n",token[block-1],IP[block-1]);
+        }
     for(int i=0;i<MAXSERVERS;i++){
         int dataServerConnectionfd = -1;
+       
         if(fork()==0){
             for(int j=i;j<block;j=j+MAXSERVERS){
-                if(dataServerConnectionfd==-1)  dataServerConnectionfd = connectClient(IP[j],DATA_PORT[j]);
-                if(readWriteFlag) writeBlock(fd,j,token[j], dataServerConnectionfd);
-            }
+                if(dataServerConnectionfd==-1)  dataServerConnectionfd = connectClient(IP[j],DATA_PORT);  
+                deleteBlock(dataServerConnectionfd,token[j]);          
+                }
             close(dataServerConnectionfd);
             exit(0);
         }
     }
-    for(int i=0;i<block;i++) wait(NULL); //wait for children to finish
+    for(int i=0;i<MAXSERVERS;i++) wait(NULL); 
+
+}
+//Reading the Block of File from FileNameServer
+void readFileBlock(int connfd, int size, char *src, char *dest){
+    int readWriteFlag = 0;
+    int fd;
+    int block;
+    char **token;
+    char **IP;
+    struct server_resp_packet res;
+    if(strlen(dest)==0) dest = NULL;
+    if(dest!=NULL && preCheck("./bfs",dest)&& !preCheck("./bfs",src)){
+        readWriteFlag = 1;
+        fd = open(src,O_RDONLY);
+        block = size/1048576;
+        if(size%1048576!=0) block++;
+        token = (char **)malloc(sizeof(char *) * block);
+        IP = (char **)malloc(sizeof(char *) * block);
+        for(int i=0;i<block;i++){
+            token[i] = (char *)malloc(20 * sizeof(char));
+            IP[i] = (char *)malloc(20 * sizeof(char));
+            read(connfd,&res,sizeof(res));
+            strcpy(token[i],res.payload);
+            read(connfd,&res,sizeof(res));
+            strcpy(IP[i],res.payload);
+            printf("Token: %s\t IP:%s\n",token[i],IP[i]);
+        }
+    }
+    else if(dest==NULL || (!preCheck("./bfs",dest)&& preCheck("./bfs",src))){
+        readWriteFlag = 0;
+        if(dest!=NULL && (fd = open(dest,O_CREAT|O_WRONLY)) == -1){
+            perror("Opening Dest File");
+            exit(0);
+        };
+        block = 0;
+        int maxsize = 1;
+        token = (char **)malloc(maxsize* sizeof(char*));
+        IP = (char **)malloc(maxsize* sizeof(char*));
+        alarm(2);
+        while(read(connfd,&res,sizeof(res))!=0){
+            alarm(0);
+            if(res.response_no==-1) break;
+            block++;
+            if(block>maxsize){
+                maxsize = maxsize*2;
+                token = (char **)realloc(token,maxsize* sizeof(char*));
+                IP = (char **)realloc(IP,maxsize* sizeof(char*));
+            }
+            token[block-1] = (char *)malloc(20 * sizeof(char));
+            IP[block-1] = (char *)malloc(20 * sizeof(char));
+            strcpy(token[block-1],res.payload);
+            read(connfd,&res,sizeof(res));
+            strcpy(IP[block-1],res.payload);
+            printf("Token: %s\t IP:%s\n",token[block-1],IP[block-1]);
+        }
+    }
+   
+    for(int i=0;i<MAXSERVERS;i++){
+        int dataServerConnectionfd = -1;
+       
+        if(fork()==0){
+            for(int j=i;j<block;j=j+MAXSERVERS){
+                if(dataServerConnectionfd==-1)  dataServerConnectionfd = connectClient(IP[j],DATA_PORT);
+                if(readWriteFlag) writeBlock(src,j,token[j], dataServerConnectionfd);
+                else {readBlock(dest,j,token[j], dataServerConnectionfd);}
+            }
+            close(fd);
+            close(dataServerConnectionfd);
+            exit(0);
+        }
+    }
+    for(int i=0;i<MAXSERVERS;i++) wait(NULL); //wait for children to finish
 }
 void send_cmd(int connfd, int cmd_no, char *src, char * dest, int size){
     struct client_req_packet packet;
@@ -97,8 +218,11 @@ void send_cmd(int connfd, int cmd_no, char *src, char * dest, int size){
         perror("Error in sending data to server\n");
         exit(0);
     }
-    if(size>0)
-    readWriteFileBlock(connfd,size,src,dest);
+    if(cmd_no == 4||cmd_no==1)
+    readFileBlock(connfd,size,src,dest);
+    else if (cmd_no==2){
+        removeFile(connfd,src);
+    }
     else{
         struct server_resp_packet response;
         bzero(&response,sizeof(response));
