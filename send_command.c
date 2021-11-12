@@ -46,12 +46,17 @@ int connectClient(char *IP, int port){
 void writeBlock(char *src, int blockNo, char *token, int dataServerConnectionFd){
     struct dataServer_client_req_packet req;
     req.command_no = WRITE;
+    int n;
     strcpy(req.token,token);
     int fd = open(src,O_RDONLY);
     lseek(fd,blockNo*1048576,SEEK_SET);
-    char block[1024];
+    char block[1025];
     for (int i=0;i<1024;i++){
-    if(read(fd,block,sizeof(block))!=0){
+        memset(block,'\0', sizeof(block));
+        memset(req.payload,'\0',sizeof(req.payload));
+    if((n = read(fd,block,sizeof(block)-1))!=0){
+        block[n] = '\0';
+        
         strcpy(req.payload,block);
         write(dataServerConnectionFd,&req,sizeof(req));
         } 
@@ -71,13 +76,17 @@ void readBlock(char *dest, int blockNo, char *token, int dataServerConnectionFd)
     write(dataServerConnectionFd,&req,sizeof(req));
     struct server_resp_packet res;
     int fd = 1;
-    if(dest!=NULL)fd = open(dest,O_WRONLY);
+    if(dest!=NULL)fd = open(dest,O_WRONLY, S_IRUSR|S_IWUSR|S_IXUSR);
     lseek(fd,blockNo*1048576,SEEK_SET);
     for(int i=0;i<1024;i++){
-    read(dataServerConnectionFd,&res,sizeof(res));
-    if(res.response_no!=-1)
-    write(fd,res.payload,sizeof(res.payload));
-    else break;
+        bzero(&res, sizeof(res));
+        read(dataServerConnectionFd,&res,sizeof(res));
+        if(res.response_no!=-1){
+            write(fd,(res.payload),strlen(res.payload));
+
+        }
+            
+        else break;
     }
     close(fd);
 }
@@ -165,7 +174,7 @@ void readFileBlock(int connfd, int size, char *src, char *dest){
     }
     else if(dest==NULL || (!preCheck("./bfs",dest)&& preCheck("./bfs",src))){
         readWriteFlag = 0;
-        if(dest!=NULL && (fd = open(dest,O_CREAT|O_WRONLY)) == -1){
+        if(dest!=NULL && (fd = open(dest,O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR|S_IXUSR)) == -1){
             perror("Opening Dest File");
             exit(0);
         };

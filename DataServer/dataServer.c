@@ -6,17 +6,19 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include<stdlib.h>
+#include <string.h>
 #define SERV_PORT 9877
 // #define IP "192.168.1.7"
 #define QUEUE 10
 
 void writeHandler(int connfd, struct dataServer_client_req_packet req){
-    int fd = open(req.token,O_CREAT|O_WRONLY);
+    int fd = open(req.token,O_CREAT|O_WRONLY,S_IRUSR|S_IWUSR|S_IXUSR);
     write(fd,req.payload,sizeof(req.payload));
     for(int i=0;i<1023;i++){
+        
         read(connfd,&req,sizeof(req));
         if(req.command_no!=-1)
-        write(fd,req.payload,sizeof(req.payload));
+        write(fd,req.payload,strlen(req.payload));
         else break;
     }
     close(fd);
@@ -26,9 +28,17 @@ void readHandler(int connfd, struct dataServer_client_req_packet req){
     int fd = open(req.token,O_RDONLY);
     struct server_resp_packet res;
     res.response_no = 1;
+    int n;
     for(int i=0;i<1024;i++){
-        if(read(fd,res.payload,sizeof(res.payload))!=0)  write(connfd,&res,sizeof(res));
+        bzero(&res,sizeof(res));
+        if( (n= read( fd,res.payload,sizeof(res.payload)-1))!=0)  
+        { 
+            res.payload[n] = '\0'; 
+            write(connfd,&res,sizeof(res));
+           
+        }
         else {
+            
             res.response_no = -1;
             write(connfd,&res,sizeof(res));
             break;
@@ -71,7 +81,7 @@ int main(int argc, char * argv[]){
     for( ; ; ){
         clilen = sizeof(cliaddr);
         connfd = accept(listenfd,(struct sockaddr *)&cliaddr,&clilen);
-        if((childpid=fork())==0){
+        if((childpid=fork())>0){
             close(listenfd);
             struct dataServer_client_req_packet req;
             while(1){

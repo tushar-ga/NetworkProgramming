@@ -7,13 +7,15 @@
 #include<arpa/inet.h>
 #include<fcntl.h>
 #include <sys/wait.h>
+#include <errno.h>
 #define MAXCMDS 6
 #define SERV_PORT 9879
-#define IP_ADDR "192.168.1.7"
+#define IP_ADDR "192.168.0.109"
 #define MAXSERVERS 3
-
+extern int errno;
 char* commands[]={"ls","cat","rm","mv","cp","quit"};
-int DATA_PORT[] = {9875,9876,9877};
+// int DATA_PORT[] = {9875,9876,9877};
+#define DATA_PORT 9877
 enum fileBlockCmd{READ, WRITE, DEL};
 int dataServerConn[MAXSERVERS];
 
@@ -49,13 +51,18 @@ char *gets(){
     return string;
 }
 
+int prefix(const char *pre, const char *str)
+{
+    return strncmp(pre, str, strlen(pre)) == 0;
+}
+
 enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest){
     char* tokens[3];
     int c = 0;
     char *token = strtok(user_in," ");
     while(token){
         if(c>=3) {
-            printf("Invalid syntax\n");return;
+            printf("Invalid syntax\n"); return INVALID;
         }
         tokens[c] = token;
         c++;
@@ -69,7 +76,7 @@ enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest){
     switch (cmd_no)
         {
         case 0:
-            if(c!=1 && c!=2) printf("Please enter a valid syntax.\n");
+            if(c!=1 && c!=2) {printf("Please enter a valid syntax.\n"); return INVALID;}
             else {
                 if(c==1){
                     src[0]='\0';
@@ -82,14 +89,14 @@ enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest){
             break;
         case 1:
         case 2:
-            if(c!=2) printf("Please enter a valid syntax.\n");
+            if(c!=2) {printf("Please enter a valid syntax.\n");return INVALID;}
             else {
                 strcpy(src,tokens[1]);dest='\0';
             }
             break;
         case 3:
         case 4:
-            if(c!=3) printf("Please enter a valid syntax.\n");
+            if(c!=3) {printf("Please enter a valid syntax.\n"); return INVALID;}
             else {
                 strcpy(src,tokens[1]);
                 strcpy(dest,tokens[2]);
@@ -97,15 +104,11 @@ enum command_no parse_command(char*user_in, char* cmd, char*src, char*dest){
             break;
         case 5: break;
         default:
-            printf("Not a valid command.\n");
+            {printf("Not a valid command.\n");return INVALID;}
             break;
         }
         fflush(stdout);
         return cmd_no;
-}
-int prefix(const char *pre, const char *str)
-{
-    return strncmp(pre, str, strlen(pre)) == 0;
 }
 
 enum command_no take_command(char *cmd, char*src, char*dest, int *size, int connfd){
@@ -135,12 +138,6 @@ enum command_no take_command(char *cmd, char*src, char*dest, int *size, int conn
 }
 
 
-
-
-
-
-
-
 int preCheck(const char *pre, const char *str)
 {
     return strncmp(pre, str, strlen(pre)) == 0;
@@ -166,27 +163,101 @@ int connectClient(char *IP, int port){
 }
 
 //Writing a File Block of 1 MB to server and Reading from Client
-void writeBlock(int fd, int blockNo, char *token, int dataServerConnectionFd){
+void writeBlock(char *src, int blockNo, char *token, int dataServerConnectionFd){
     struct dataServer_client_req_packet req;
     req.command_no = WRITE;
     strcpy(req.token,token);
+    int fd = open(src,O_RDONLY);
     lseek(fd,blockNo*1048576,SEEK_SET);
-    char block[1048576];
-    read(fd,block,sizeof(block));
-    strcpy(req.payload,block);
-    write(dataServerConnectionFd,&req,sizeof(req));
+    char block[1024];
+    for (int i=0;i<1024;i++){
+        memset(block,'\0', sizeof(block));
+        memset(req.payload,'\0',sizeof(req.payload));
+    if(read(fd,block,sizeof(block))!=0){
+        strcpy(req.payload,block);
+        write(dataServerConnectionFd,&req,sizeof(req));
+        } 
+    else {
+        req.command_no = -1;
+        write(dataServerConnectionFd,&req,sizeof(req));
+        break;};
+    }
+    close(fd);
 }
 
 //Reading a File Block from server and writing at Client
-void readBlock(int fd, int blockNo, char *token, int dataServerConnectionFd){
+void readBlock(char *dest, int blockNo, char *token, int dataServerConnectionFd){
     struct dataServer_client_req_packet req;
     req.command_no = READ;
     strcpy(req.token,token);
     write(dataServerConnectionFd,&req,sizeof(req));
     struct server_resp_packet res;
-    read(dataServerConnectionFd,&res,sizeof(res));
+    int fd = 1;
+    if(dest!=NULL)fd = open(dest,O_WRONLY);
     lseek(fd,blockNo*1048576,SEEK_SET);
+    for(int i=0;i<1024;i++){
+    read(dataServerConnectionFd,&res,sizeof(res));
+    if(res.response_no!=-1)
     write(fd,res.payload,sizeof(res.payload));
+    else break;
+    }
+    close(fd);
+}
+void sigalarm(int sig){
+    printf("Server took too long to respond. You either referred to a non-existing file or there might be problem in your connection\n");
+    exit(0);
+}
+void deleteBlock(int dataServerConnectionFd, char *token){
+    struct dataServer_client_req_packet req;
+    req.command_no = 2;
+    strcpy(req.token, token);
+    write(dataServerConnectionFd,&req,sizeof(req));
+}
+void removeFile(int connfd, char *src){
+    int block;
+    char **token;
+    char **IP;
+    block = 0;
+    struct server_resp_packet res;
+        int maxsize = 1;
+        token = (char **)malloc(maxsize* sizeof(char*));
+        IP = (char **)malloc(maxsize* sizeof(char*));
+        signal(SIGALRM,sigalarm);
+        alarm(2);
+        int a;
+        while((a=read(connfd,&res,sizeof(res)))>0){
+            if (errno == EINTR){
+                return;
+            }
+            alarm(0);
+            if(res.response_no==-1) break;
+            block++;
+            if(block>maxsize){
+                maxsize = maxsize*2;
+                token = (char **)realloc(token,maxsize* sizeof(char*));
+                IP = (char **)realloc(IP,maxsize* sizeof(char*));
+            }
+            token[block-1] = (char *)malloc(20 * sizeof(char));
+            IP[block-1] = (char *)malloc(20 * sizeof(char));
+            strcpy(token[block-1],res.payload);
+            read(connfd,&res,sizeof(res));
+            strcpy(IP[block-1],res.payload);
+            printf("Token: %s\t IP:%s\n",token[block-1],IP[block-1]);
+        }
+    for(int i=0;i<MAXSERVERS;i++){
+        int dataServerConnectionfd = -1;
+       
+        if(fork()==0){
+            for(int j=i;j<block;j=j+MAXSERVERS){
+                if(dataServerConnectionfd==-1)  dataServerConnectionfd = connectClient(IP[j],DATA_PORT);  
+                deleteBlock(dataServerConnectionfd,token[j]);          
+                }
+            close(dataServerConnectionfd);
+            exit(0);
+        }
+    }
+    for(int i=0;i<MAXSERVERS;i++) wait(NULL); 
+
 }
 //Reading the Block of File from FileNameServer
 void readFileBlock(int connfd, int size, char *src, char *dest){
@@ -196,7 +267,8 @@ void readFileBlock(int connfd, int size, char *src, char *dest){
     char **token;
     char **IP;
     struct server_resp_packet res;
-    if(preCheck("./bfs",dest)&& !preCheck("./bfs",src)){
+    if(strlen(dest)==0) dest = NULL;
+    if(dest!=NULL && preCheck("./bfs",dest)&& !preCheck("./bfs",src)){
         readWriteFlag = 1;
         fd = open(src,O_RDONLY);
         block = size/1048576;
@@ -206,16 +278,16 @@ void readFileBlock(int connfd, int size, char *src, char *dest){
         for(int i=0;i<block;i++){
             token[i] = (char *)malloc(20 * sizeof(char));
             IP[i] = (char *)malloc(20 * sizeof(char));
-            long n = read(connfd,&res,sizeof(res));
+            read(connfd,&res,sizeof(res));
             strcpy(token[i],res.payload);
-            long f = read(connfd,&res,sizeof(res));
+            read(connfd,&res,sizeof(res));
             strcpy(IP[i],res.payload);
-            printf("Token: %s\t IP:%s\n read: %ld, read2:%ld",token[i],IP[i],n,f);
+            printf("Token: %s\t IP:%s\n",token[i],IP[i]);
         }
     }
-    else if(!preCheck("./bfs",dest)&& preCheck("./bfs",src)){
+    else if(dest==NULL || (!preCheck("./bfs",dest)&& preCheck("./bfs",src))){
         readWriteFlag = 0;
-        if((fd = open(dest,O_CREAT|O_WRONLY)) == -1){
+        if(dest!=NULL && (fd = open(dest,O_CREAT|O_WRONLY)) == -1){
             perror("Opening Dest File");
             exit(0);
         };
@@ -223,7 +295,9 @@ void readFileBlock(int connfd, int size, char *src, char *dest){
         int maxsize = 1;
         token = (char **)malloc(maxsize* sizeof(char*));
         IP = (char **)malloc(maxsize* sizeof(char*));
+        alarm(2);
         while(read(connfd,&res,sizeof(res))!=0){
+            alarm(0);
             if(res.response_no==-1) break;
             block++;
             if(block>maxsize){
@@ -245,16 +319,16 @@ void readFileBlock(int connfd, int size, char *src, char *dest){
        
         if(fork()==0){
             for(int j=i;j<block;j=j+MAXSERVERS){
-                if(dataServerConnectionfd==-1)  dataServerConnectionfd = connectClient(IP[j],DATA_PORT[j]);
-                if(readWriteFlag) writeBlock(fd,j,token[j], dataServerConnectionfd);
-                else {readBlock(fd,j,token[j], dataServerConnectionfd);}
+                if(dataServerConnectionfd==-1)  dataServerConnectionfd = connectClient(IP[j],DATA_PORT);
+                if(readWriteFlag) writeBlock(src,j,token[j], dataServerConnectionfd);
+                else {readBlock(dest,j,token[j], dataServerConnectionfd);}
             }
             close(fd);
             close(dataServerConnectionfd);
             exit(0);
         }
     }
-    for(int i=0;i<block;i++) wait(NULL); //wait for children to finish
+    for(int i=0;i<MAXSERVERS;i++) wait(NULL); //wait for children to finish
 }
 void send_cmd(int connfd, int cmd_no, char *src, char * dest, int size){
     struct client_req_packet packet;
@@ -266,8 +340,11 @@ void send_cmd(int connfd, int cmd_no, char *src, char * dest, int size){
         perror("Error in sending data to server\n");
         exit(0);
     }
-    if(cmd_no == 3)
+    if(cmd_no == 4||cmd_no==1)
     readFileBlock(connfd,size,src,dest);
+    else if (cmd_no==2){
+        removeFile(connfd,src);
+    }
     else{
         struct server_resp_packet response;
         bzero(&response,sizeof(response));
@@ -281,6 +358,8 @@ void send_cmd(int connfd, int cmd_no, char *src, char * dest, int size){
 
 
 int main(int argc, char *argv[]){
+    printf("*********************WELCOME TO BIG FILE SYSTEM!***********************\n");
+    printf("You can use the commands (ls,mv,cp,rm,cat and quit) here.\nFor referring to the paths on the server please attach \"./bfs\" in your path for correct results.\n");
     struct sockaddr_in server_addr;
     connfd = socket(AF_INET,SOCK_STREAM,0);
     bzero(&server_addr,sizeof(server_addr));
@@ -297,11 +376,7 @@ int main(int argc, char *argv[]){
         char dest[128];
         int size;
     enum command_no num = take_command(cmd,src,dest,&size, connfd);
-        if(num==LS||num == MV){
-            send_cmd(connfd,num,src,dest,size);
-        }
+    if(num!=INVALID) send_cmd(connfd,num,src,dest,size);
     }
 }
-
-
 

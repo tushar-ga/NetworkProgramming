@@ -23,7 +23,7 @@ int main(int argc, char *argv[]){
     bzero(&server_addr,sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERV_PORT);
-    inet_pton(AF_INET,IP_ADDR,&server_addr.sin_addr);
+    inet_pton(AF_INET,argv[1],&server_addr.sin_addr);
     if(connect(connfd,(struct sockaddr *)&server_addr,sizeof(server_addr))==-1){
         perror("Error establishing a connection with the server\n");
         exit(0);
