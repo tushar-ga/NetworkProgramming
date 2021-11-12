@@ -12,7 +12,7 @@
 
 void writeHandler(int connfd, struct dataServer_client_req_packet req){
     int fd = open(req.token,O_CREAT|O_WRONLY,S_IRUSR|S_IWUSR|S_IXUSR);
-    write(fd,req.payload,sizeof(req.payload));
+    write(fd,req.payload,strlen(req.payload));
     for(int i=0;i<1023;i++){
         
         read(connfd,&req,sizeof(req));
@@ -30,7 +30,7 @@ void readHandler(int connfd, struct dataServer_client_req_packet req){
     int n;
     for(int i=0;i<1024;i++){
         bzero(&res,sizeof(res));
-        if( (n= read( fd,res.payload,sizeof(res.payload)-1))!=0)  
+        if( (n= read( fd,res.payload,sizeof(res.payload)-1))>0)  
         { 
             res.payload[n] = '\0'; 
             write(connfd,&res,sizeof(res));

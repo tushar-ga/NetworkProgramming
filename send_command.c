@@ -54,7 +54,7 @@ void writeBlock(char *src, int blockNo, char *token, int dataServerConnectionFd)
     for (int i=0;i<1024;i++){
         memset(block,'\0', sizeof(block));
         memset(req.payload,'\0',sizeof(req.payload));
-    if((n = read(fd,block,sizeof(block)-1))!=0){
+    if((n = read(fd,block,sizeof(block)-1))>0){
         block[n] = '\0';
         
         strcpy(req.payload,block);
