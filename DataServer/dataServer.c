@@ -8,7 +8,6 @@
 #include<stdlib.h>
 #include <string.h>
 #define SERV_PORT 9877
-// #define IP "192.168.1.7"
 #define QUEUE 10
 
 void writeHandler(int connfd, struct dataServer_client_req_packet req){
